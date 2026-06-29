@@ -13,11 +13,25 @@ async function sbFetch(path, opts = {}) {
 }
 
 function jobToRow(j) {
-  return { id:j.id, customer:j.customer, phone:j.phone, address:j.address, size:j.size, status:j.status, driver:j.driver, scheduled_date:j.scheduledDate, notes:j.notes, invoice:j.invoice, paid:j.paid, dumpster_id:j.dumpsterId||null, texts:j.texts||[] };
+  return { id:j.id, customer:j.customer, phone:j.phone, address:j.address, size:j.size, status:j.status, driver:j.driver, scheduled_date:j.scheduledDate, notes:j.notes, invoice:j.invoice, paid:j.paid, dumpster_id:j.dumpsterId||null, texts:j.texts||[], rental_days:j.rentalDays||1 };
 }
 function rowToJob(r) {
-  return { id:r.id, customer:r.customer, phone:r.phone, address:r.address, size:r.size, status:r.status, driver:r.driver, scheduledDate:r.scheduled_date, notes:r.notes, invoice:r.invoice, paid:r.paid, dumpsterId:r.dumpster_id, texts:r.texts||[] };
+  return { id:r.id, customer:r.customer, phone:r.phone, address:r.address, size:r.size, status:r.status, driver:r.driver, scheduledDate:r.scheduled_date, notes:r.notes, invoice:r.invoice, paid:r.paid, dumpsterId:r.dumpster_id, texts:r.texts||[], rentalDays:r.rental_days||1 };
 }
+
+// Get all dates a job spans based on rental duration
+function getJobDates(job) {
+  if (!job.scheduledDate) return [];
+  const dates = [];
+  const start = new Date(job.scheduledDate + "T12:00:00");
+  for (let i = 0; i < (job.rentalDays || 1); i++) {
+    const d = new Date(start);
+    d.setDate(start.getDate() + i);
+    dates.push(d.toISOString().slice(0,10));
+  }
+  return dates;
+}
+
 function dumpToRow(d) { return { id:d.id, size:d.size, status:d.status, condition:d.condition, notes:d.notes }; }
 
 // -- Brand --------------------------------------------------------------------
@@ -201,7 +215,7 @@ export default function App() {
   });
 
   // -- Job CRUD -------------------------------------------------------------
-  const emptyJob = { customer:"", phone:"", address:"", size:"15 yd", status:"Scheduled", driver:"Unassigned", scheduledDate:"", notes:"", invoice:325, paid:false, dumpsterId:"", texts:[] };
+  const emptyJob = { customer:"", phone:"", address:"", size:"15 yd", status:"Scheduled", driver:"Unassigned", scheduledDate:"", notes:"", invoice:325, paid:false, dumpsterId:"", texts:[], rentalDays:1 };
 
 
   // -- Smart text parser -----------------------------------------------------
@@ -619,7 +633,7 @@ export default function App() {
                 <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
                   {weekDays.map(d => {
                     const dateStr = fmtDate(d);
-                    const dayJobs = jobs.filter(j => j.scheduledDate === dateStr);
+                    const dayJobs = jobs.filter(j => getJobDates(j).includes(dateStr));
                     const isToday2 = dateStr === today;
                     return (
                       <div key={dateStr} style={{ ...cardStyle, overflow:"hidden", borderLeft: isToday2 ? `4px solid ${ORANGE}` : "1px solid #222" }}>
@@ -699,7 +713,7 @@ export default function App() {
                     <div style={{ fontWeight:700, fontSize:15 }}>{j.customer}</div>
                     <button onClick={e => { e.stopPropagation(); openMaps(j.address); }} style={{ background:"none", border:"none", color:"#5CCC6C", fontSize:12, cursor:"pointer", padding:0, textDecoration:"underline", textAlign:"left" }}>📍 {j.address}</button>
                   </div>
-                  <div style={{ fontSize:12, color:"#666", width:90 }}>{j.scheduledDate}</div>
+                  <div style={{ fontSize:12, color:"#666", width:110 }}>{j.scheduledDate}<br/><span style={{ fontSize:11, color:"#555" }}>{j.rentalDays||1} day{(j.rentalDays||1)>1?"s":""}</span></div>
                   <div style={{ fontSize:13, fontWeight:700, width:55, color:ORANGE }}>{j.size}</div>
                   <div style={{ fontSize:12, width:75, color:"#888" }}>{j.driver}</div>
                   {j.dumpsterId && <div style={{ fontSize:11, color:"#555", width:70 }}>{j.dumpsterId}</div>}
@@ -1026,6 +1040,24 @@ export default function App() {
                     style={inputStyle} />
                 </div>
               ))}
+              {/* Rental Duration */}
+              <div>
+                <label style={labelStyle}>Rental Duration</label>
+                <div style={{ display:"flex", gap:8 }}>
+                  {[1,3,5,7].map(d => (
+                    <button key={d} type="button" onClick={() => setFormData(f => ({ ...f, rentalDays:d }))}
+                      style={{ flex:1, background:formData.rentalDays===d?ORANGE:"#2A2A2A", color:formData.rentalDays===d?"#FFF":"#888", border:formData.rentalDays===d?"none":"1px solid #333", borderRadius:8, padding:"10px 4px", fontWeight:800, fontSize:13, cursor:"pointer" }}>
+                      {d} {d===1?"day":"days"}
+                    </button>
+                  ))}
+                </div>
+                {formData.scheduledDate && (
+                  <div style={{ fontSize:12, color:"#666", marginTop:6 }}>
+                    Pickup after: <span style={{ color:ORANGE, fontWeight:700 }}>{(() => { const d = new Date(formData.scheduledDate+"T12:00:00"); d.setDate(d.getDate()+(formData.rentalDays||1)-1); return d.toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"}); })()}</span>
+                  </div>
+                )}
+              </div>
+
               <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:12 }}>
                 {[
                   { label:"Size",   key:"size",   options:DUMPSTER_SIZES },
